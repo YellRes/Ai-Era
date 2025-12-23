@@ -1,0 +1,9 @@
+{
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@repo/ui": ["packages/ui/src"],
+      "@repo/shared": ["packages/shared/src"]
+    }
+  }
+}
