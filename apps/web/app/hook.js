@@ -17,21 +17,32 @@ export function useCompanyInfo(searchKey) {
     }, [])
 
     const filterCompanyInfo = useMemo(() => {
-        if (!searchKey) return companyInfo
-        const lowerKey = searchKey.toLowerCase().trim()
-        if (!lowerKey) return companyInfo
-
-        return companyInfo.filter(item => {
-            const title = item.pinyin || item.zwjc || ''
-            const code = item.code
-            return title.toLowerCase().includes(lowerKey) ||
-                code.toLowerCase().includes(lowerKey)
-        }).map(item => ({
+        // 先转换为 Suggestion 需要的格式（必须有 value 和 label）
+        const formattedList = companyInfo.map(item => ({
             value: item.code,
             label: item.zwjc,
             ...item
-        })).slice(0, 10)
+        }))
+
+        if (!searchKey) return formattedList.slice(0, 10)
+        
+        const lowerKey = searchKey.toLowerCase().trim()
+        if (!lowerKey) return formattedList.slice(0, 10)
+
+        return formattedList.filter(item => {
+            const title = item.pinyin || item.zwjc || ''
+            const code = item.code || ''
+            return title.toLowerCase().includes(lowerKey) ||
+                code.toLowerCase().includes(lowerKey)
+        }).slice(0, 10)
     }, [companyInfo, searchKey])
 
-    return filterCompanyInfo
+    const filterCompanyCode2NameMap = useMemo(() => {
+        return companyInfo.reduce((acc, item) => {
+            acc[item.code] = item.zwjc
+            return acc
+        }, {})
+    }, [companyInfo])
+
+    return {filterCompanyInfo, filterCompanyCode2NameMap}
 }

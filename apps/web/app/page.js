@@ -1,24 +1,28 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { Sender, XProvider, Suggestion } from '@ant-design/x';
 import { ArrowUpOutlined } from '@ant-design/icons';
 import { ConfigProvider, theme, Button } from 'antd';
 import { useCompanyInfo } from './hook';
 
+// 在组件外部定义常量，避免每次渲染创建新引用
+const EMPTY_SLOT_CONFIG = [];
+
 export default function Home() {
-  const [value, setValue] = useState('');
+  // 词槽模式下 value 无效，用 key 控制重置
+  const [senderKey, setSenderKey] = useState(0);
   const [selectedButton, setSelectedButton] = useState(null);
+  const senderRef = useRef(null);
 
-  const companyInfo = useCompanyInfo(value);
+  // 词槽模式下不依赖 value 过滤，使用空字符串获取全部数据
+  const {filterCompanyInfo, filterCompanyCode2NameMap} = useCompanyInfo('');
 
-  const handleSubmit = (val) => {
-    console.log('Submit:', val);
-    setValue('');
-  };
-
-  const handleButtonClick = (buttonName) => {
-    setSelectedButton(selectedButton === buttonName ? null : buttonName);
+  const handleSubmit = (message, slotConfig) => {
+    console.log('提交文本:', message);
+    console.log('词槽配置:', slotConfig);
+    // 重置输入框
+    setSenderKey(prev => prev + 1);
   };
 
   return (
@@ -49,30 +53,42 @@ export default function Home() {
           <div style={styles.logoContainer}>
             <span style={styles.logoText}>Ai-Era</span>
           </div>
-
-          {/* Input Box */}
+     
           <div style={styles.inputContainer}>
 
             <Suggestion
-              items={companyInfo}>
-              {
-                ({ onTrigger, onKeyDown, open }) => {
-                  return <> <Sender
-                    value={value}
-                    onSubmit={handleSubmit}
-                    placeholder="告诉我你要查询公司的信息?"
-                    suffix={
-                      <div style={styles.suffixContainer} onClick={() => value && handleSubmit(value)}>
-                        <ArrowUpOutlined style={{ fontSize: 18, color: '#fff', cursor: 'pointer' }} />
-                      </div>
+              block
+              items={() => filterCompanyInfo}
+              onSelect={(item) => {
+                if (senderRef.current?.insert) {
+                  senderRef.current.insert([
+                    { 
+                      type: 'tag',
+                      key: `tag-${item}-${Date.now()}`,  // ✅ 添加唯一 key
+                      props: { 
+                        label: filterCompanyCode2NameMap[item] || item,
+                        value: item 
+                      }  
                     }
-                    onChange={(nextVal) => {
-                      if (nextVal === '/') {
+                  ]);
+                }
+              }}
+              >
+              {
+                ({ onTrigger }) => (
+                  <Sender
+                    key={senderKey}
+                    ref={senderRef}
+                    slotConfig={EMPTY_SLOT_CONFIG}
+                    placeholder="输入 / 唤起快捷指令"
+                    onSubmit={handleSubmit}
+                    onChange={(text, event, slotConfig) => {
+                      // 词槽模式下 text 是纯文本内容
+                      if (text === '/') {
                         onTrigger();
-                      } else if (!nextVal) {
+                      } else if (!text) {
                         onTrigger(false);
                       }
-                      setValue(nextVal);
                     }}
                     style={styles.sender}
                     styles={{
@@ -81,33 +97,11 @@ export default function Home() {
                         color: '#fff',
                       },
                     }}
-                  /></>
-                }
+                  />
+                )
               }
             </Suggestion>
 
-
-
-            {/* <div style={styles.buttonContainer}>
-              <Button 
-                shape="round" 
-                size="large"
-                type={selectedButton === 'company' ? 'primary' : 'default'}
-                onClick={() => handleButtonClick('company')}
-                style={selectedButton === 'company' ? styles.primaryButton : styles.defaultButton}
-              >
-                查公司
-              </Button>
-              <Button 
-                shape="round" 
-                size="large"
-                type={selectedButton === 'financial' ? 'primary' : 'default'}
-                onClick={() => handleButtonClick('financial')}
-                style={selectedButton === 'financial' ? styles.primaryButton : styles.defaultButton}
-              >
-                查财报
-              </Button>
-            </div> */}
           </div>
         </main>
       </XProvider>

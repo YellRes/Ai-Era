@@ -4,7 +4,7 @@ export async function searchCompany(query) {
     console.log('Server side searching:', query);
 
     // 模拟请求
-    const res = await fetch(`http://localhost:8000/get_company_info`);
+    const res = await fetch(`http://127.0.0.1:8000/get_company_info`);
     const data = await res.json();
 
     return data;
