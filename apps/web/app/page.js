@@ -1,177 +1,180 @@
 'use client';
+import { useState, useCallback } from 'react';
+import { Sender, MessageList } from './component/index';
 
-import { useState, useRef } from 'react';
-import { Sender, XProvider, Suggestion } from '@ant-design/x';
-import { ArrowUpOutlined } from '@ant-design/icons';
-import { ConfigProvider, theme, Button } from 'antd';
-import { useCompanyInfo } from './hook';
-
-// 在组件外部定义常量，避免每次渲染创建新引用
-const EMPTY_SLOT_CONFIG = [];
+// 流式请求需要在客户端直接 fetch，不能通过 Server Action
+const API_BASE = 'http://127.0.0.1:8000';
 
 export default function Home() {
-  // 词槽模式下 value 无效，用 key 控制重置
-  const [senderKey, setSenderKey] = useState(0);
-  const [selectedButton, setSelectedButton] = useState(null);
-  const senderRef = useRef(null);
+  const [messages, setMessages] = useState([]);
+  
+  // 是否有消息，决定布局模式
+  const hasMessages = messages.length > 0;
 
-  // 词槽模式下不依赖 value 过滤，使用空字符串获取全部数据
-  const {filterCompanyInfo, filterCompanyCode2NameMap} = useCompanyInfo('');
+  // 处理发送消息
+  const handleSubmit = useCallback(async ({message, query}, slotValues) => {
+    // if (!message.trim()) return;
+    
+    // 添加用户消息
+    const userMessage = {
+      content: message,
+      role: 'user',
+      key: `user_${Date.now()}`,
+    };
+    setMessages(prev => [...prev, userMessage]);
 
-  const handleSubmit = (message, slotConfig) => {
-    console.log('提交文本:', message);
-    console.log('词槽配置:', slotConfig);
-    // 重置输入框
-    setSenderKey(prev => prev + 1);
-  };
+    // 添加 AI 消息占位
+    const aiMessageKey = `ai_${Date.now()}`;
+    setMessages(prev => [...prev, {
+      content: '',
+      role: 'assistant',
+      key: aiMessageKey,
+    }]);
+
+    try {
+      // 直接在客户端 fetch，处理流式响应
+      const res = await fetch(`${API_BASE}/analyze`, {
+        method: 'POST',
+        body: JSON.stringify(query),
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let fullText = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        
+        const chunk = decoder.decode(value, { stream: true });
+        fullText += chunk;
+        
+        // 实时更新 AI 消息内容
+        setMessages(prev => prev.map(msg => 
+          msg.key === aiMessageKey 
+            ? { ...msg, content: fullText }
+            : msg
+        ));
+      }
+    } catch (error) {
+      console.error('请求失败:', error);
+      setMessages(prev => prev.map(msg => 
+        msg.key === aiMessageKey 
+          ? { ...msg, content: '请求失败，请重试' }
+          : msg
+      ));
+    }
+  }, []);
 
   return (
-    <ConfigProvider
-      theme={{
-        algorithm: theme.darkAlgorithm,
-        token: {
-          colorPrimary: '#1677ff',
-          colorBgContainer: '#2a2a2a',
-          colorBgElevated: '#1a1a1a',
-          colorText: '#ffffff',
-          colorTextSecondary: '#a0a0a0',
-          borderRadius: 24,
-        },
-        components: {
-          Button: {
-            paddingInline: 24,
-            defaultBg: 'rgba(255, 255, 255, 0.05)',
-            defaultBorderColor: 'rgba(255, 255, 255, 0.1)',
-            defaultColor: '#a0a0a0',
-          },
-        },
-      }}
-    >
-      <XProvider>
-        <main style={styles.main}>
-          {/* Logo */}
+    <div style={styles.container}>
+      {/* 欢迎界面 - 仅在没有消息时显示 */}
+      {!hasMessages && (
+        <div style={styles.welcomeSection}>
           <div style={styles.logoContainer}>
             <span style={styles.logoText}>Ai-Era</span>
           </div>
-     
-          <div style={styles.inputContainer}>
+          <p style={styles.welcomeSubtitle}>智能财报分析助手</p>
+        </div>
+      )}
 
-            <Suggestion
-              block
-              items={() => filterCompanyInfo}
-              onSelect={(item) => {
-                if (senderRef.current?.insert) {
-                  senderRef.current.insert([
-                    { 
-                      type: 'tag',
-                      key: `tag-${item}-${Date.now()}`,  // ✅ 添加唯一 key
-                      props: { 
-                        label: filterCompanyCode2NameMap[item] || item,
-                        value: item 
-                      }  
-                    }
-                  ]);
-                }
-              }}
-              >
-              {
-                ({ onTrigger }) => (
-                  <Sender
-                    key={senderKey}
-                    ref={senderRef}
-                    slotConfig={EMPTY_SLOT_CONFIG}
-                    placeholder="输入 / 唤起快捷指令"
-                    onSubmit={handleSubmit}
-                    onChange={(text, event, slotConfig) => {
-                      // 词槽模式下 text 是纯文本内容
-                      if (text === '/') {
-                        onTrigger();
-                      } else if (!text) {
-                        onTrigger(false);
-                      }
-                    }}
-                    style={styles.sender}
-                    styles={{
-                      input: {
-                        backgroundColor: 'transparent',
-                        color: '#fff',
-                      },
-                    }}
-                  />
-                )
-              }
-            </Suggestion>
+      {/* 消息列表 - 仅在有消息时显示 */}
+      {hasMessages && (
+        <div style={styles.messageSection}>
+          <MessageList messages={messages} />
+        </div>
+      )}
 
-          </div>
-        </main>
-      </XProvider>
-    </ConfigProvider>
+      {/* 输入区域 */}
+      <div style={{
+        ...styles.inputSection,
+        ...(hasMessages ? styles.inputSectionBottom : styles.inputSectionCenter)
+      }}>
+        <div style={styles.inputWrapper}>
+          <Sender onSubmit={handleSubmit} />
+        </div>
+      </div>
+    </div>
   );
 }
 
 const styles = {
-  main: {
-    minHeight: '100vh',
+  container: {
+    height: '100vh',
+    display: 'flex',
+    flexDirection: 'column',
     backgroundColor: '#1a1a1a',
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  
+  // 欢迎区域
+  welcomeSection: {
+    flex: 1,
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: '20px',
-    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+    paddingBottom: '120px',
+    animation: 'fadeIn 0.5s ease-out',
   },
   logoContainer: {
-    display: 'flex',
-    alignItems: 'center',
-    marginBottom: 40,
-  },
-  logoIcon: {
-    width: 48,
-    height: 48,
-    color: '#fff',
-    marginRight: 12,
+    marginBottom: 16,
   },
   logoText: {
-    fontSize: 48,
+    fontSize: 56,
     fontWeight: 300,
     color: '#fff',
-    letterSpacing: '-1px',
+    letterSpacing: '-2px',
+    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%)',
+    WebkitBackgroundClip: 'text',
+    WebkitTextFillColor: 'transparent',
+    backgroundClip: 'text',
   },
-  inputContainer: {
-    width: '100%',
-    maxWidth: 700,
-  },
-  sender: {
-    backgroundColor: '#2a2a2a',
-    borderRadius: 12,
-    border: 'none',
-    padding: '4px 16px',
+  welcomeSubtitle: {
+    fontSize: 18,
+    color: 'rgba(255, 255, 255, 0.5)',
+    fontWeight: 300,
+    letterSpacing: '0.5px',
   },
 
-  suffixContainer: {
+  // 消息区域
+  messageSection: {
+    flex: 1,
+    overflow: 'auto',
+    padding: '24px 0',
+    paddingBottom: '120px', // 给底部输入框留出空间
+    animation: 'slideDown 0.3s ease-out',
+  },
+
+  // 输入区域 - 始终使用 absolute 定位，只改变垂直位置
+  inputSection: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
     display: 'flex',
-    alignItems: 'center',
     justifyContent: 'center',
-    height: '100%',
-    padding: '8px',
-    backgroundColor: '#444',
-    borderRadius: '50%',
+    transition: 'bottom 0.4s cubic-bezier(0.4, 0, 0.2, 1), top 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
   },
-  buttonContainer: {
-    display: 'flex',
-    justifyContent: 'flex-start',
-    marginTop: 20,
-    gap: 12,
+  inputSectionCenter: {
+    top: '55%',
+    bottom: 'auto',
+    transform: 'translateY(-50%)',
   },
-  primaryButton: {
-    background: 'linear-gradient(135deg, #1677ff 0%, #003eb3 100%)',
-    border: 'none',
-    boxShadow: '0 4px 12px rgba(22, 119, 255, 0.3)',
-    color: '#fff',
+  inputSectionBottom: {
+    top: 'auto',
+    bottom: 0,
+    transform: 'translateY(0)',
+    padding: '16px 0 24px',
+    borderTop: '1px solid rgba(255, 255, 255, 0.06)',
+    background: 'linear-gradient(to top, #1a1a1a 0%, rgba(26, 26, 26, 0.95) 100%)',
   },
-  defaultButton: {
-    backdropFilter: 'blur(8px)',
-    border: '1px solid rgba(255, 255, 255, 0.1)',
-    transition: 'all 0.3s ease',
+  inputWrapper: {
+    width: '100%',
+    maxWidth: 800,
+    padding: '0 24px',
   },
 };

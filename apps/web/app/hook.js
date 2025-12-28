@@ -3,46 +3,58 @@ import { searchCompany } from './action'
 
 export function useCompanyInfo(searchKey) {
     const [companyInfo, setCompanyInfo] = useState([])
+    const [originalCompanyInfo, setOriginalCompanyInfo] = useState([])
     useEffect(() => {
         const fetchCompanyInfo = async () => {
             try {
                 const data = await searchCompany()
                 setCompanyInfo(Array.isArray(data.stockList) ? data.stockList : [])
+                setOriginalCompanyInfo(Array.isArray(data.stockList) ? data.stockList : [])
             } catch (e) {
                 console.error(e)
                 setCompanyInfo([])
+                setOriginalCompanyInfo([])
             }
         }
         fetchCompanyInfo()
     }, [])
 
     const filterCompanyInfo = useMemo(() => {
-        // 先转换为 Suggestion 需要的格式（必须有 value 和 label）
-        const formattedList = companyInfo.map(item => ({
-            value: item.code,
-            label: item.zwjc,
-            ...item
-        }))
-
-        if (!searchKey) return formattedList.slice(0, 10)
+        if (!searchKey) {
+            // 只保留 Select options 需要的 value 和 label，避免多余属性传递到 DOM
+            return originalCompanyInfo.slice(0, 10).map(item => ({
+                value: item.code,
+                label: item.zwjc,
+            }))
+        }
         
         const lowerKey = searchKey.toLowerCase().trim()
-        if (!lowerKey) return formattedList.slice(0, 10)
+        if (!lowerKey) {
+            return originalCompanyInfo.slice(0, 10).map(item => ({
+                value: item.code,
+                label: item.zwjc,
+            }))
+        }
 
-        return formattedList.filter(item => {
-            const title = item.pinyin || item.zwjc || ''
+        return originalCompanyInfo.filter(item => {
+            const title = item.pinyin || ''
+            const zwjc = item.zwjc || ''
             const code = item.code || ''
             return title.toLowerCase().includes(lowerKey) ||
+                zwjc.toLowerCase().includes(lowerKey) ||
                 code.toLowerCase().includes(lowerKey)
-        }).slice(0, 10)
-    }, [companyInfo, searchKey])
+        }).slice(0, 10).map(item => ({
+            value: item.code,
+            label: item.zwjc,
+        }))
+    }, [originalCompanyInfo, searchKey])
 
     const filterCompanyCode2NameMap = useMemo(() => {
-        return companyInfo.reduce((acc, item) => {
+        return originalCompanyInfo.reduce((acc, item) => {
             acc[item.code] = item.zwjc
             return acc
         }, {})
-    }, [companyInfo])
+    }, [originalCompanyInfo])
 
-    return {filterCompanyInfo, filterCompanyCode2NameMap}
+    return {filterCompanyInfo, filterCompanyCode2NameMap, originalCompanyInfo}
 }
