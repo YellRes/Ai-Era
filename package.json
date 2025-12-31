@@ -4,9 +4,11 @@
   "scripts": {
     "dev": "turbo run dev",
     "dev:web": "turbo run dev --filter=@repo/web",
+    "dev:service": "turbo run dev --filter=@repo/financial-service",
     "build": "turbo run build",
     "lint": "turbo run lint",
-    "clean": "turbo run clean"
+    "clean": "turbo run clean",
+    "setup:service": "cd apps/service/finacial && node scripts/setup.js"
   },
   "devDependencies": {
     "turbo": "^2.3.3"
