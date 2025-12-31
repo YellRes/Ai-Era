@@ -7,14 +7,14 @@ const API_BASE = 'http://127.0.0.1:8000';
 
 export default function Home() {
   const [messages, setMessages] = useState([]);
-  
+
   // 是否有消息，决定布局模式
   const hasMessages = messages.length > 0;
 
   // 处理发送消息
-  const handleSubmit = useCallback(async ({message, query}, slotValues) => {
+  const handleSubmit = useCallback(async ({ message, query }, slotValues) => {
     // if (!message.trim()) return;
-    
+
     // 添加用户消息
     const userMessage = {
       content: message,
@@ -44,25 +44,53 @@ export default function Home() {
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
       let fullText = '';
+      let buffer = '';
 
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
-        
+
         const chunk = decoder.decode(value, { stream: true });
-        fullText += chunk;
-        
+        buffer += chunk;
+
+        // SSE 消息由 \n\n 分隔
+        const messages = buffer.split('\n\n');
+        // 保留最后一个可能不完整的片段
+        buffer = messages.pop();
+
+        for (const message of messages) {
+          const line = message.trim();
+          if (line.startsWith('data: ')) {
+            try {
+              const jsonStr = line.slice(6);
+              const data = JSON.parse(jsonStr);
+
+              // 根据不同状态处理
+              if (data.status === 'progress') {
+                // 将进度作为引用块显示
+                fullText += `> 🔄 ${data.message}\n\n`;
+              } else if (data.status === 'analyzing' && data.data) {
+                fullText += data.data;
+              } else if (data.status === 'complete') {
+                // fullText += '\n\n✅ 分析完成';
+              }
+            } catch (e) {
+              console.warn('SSE 解析错误:', e, line);
+            }
+          }
+        }
+
         // 实时更新 AI 消息内容
-        setMessages(prev => prev.map(msg => 
-          msg.key === aiMessageKey 
+        setMessages(prev => prev.map(msg =>
+          msg.key === aiMessageKey
             ? { ...msg, content: fullText }
             : msg
         ));
       }
     } catch (error) {
       console.error('请求失败:', error);
-      setMessages(prev => prev.map(msg => 
-        msg.key === aiMessageKey 
+      setMessages(prev => prev.map(msg =>
+        msg.key === aiMessageKey
           ? { ...msg, content: '请求失败，请重试' }
           : msg
       ));
@@ -110,7 +138,7 @@ const styles = {
     overflow: 'hidden',
     position: 'relative',
   },
-  
+
   // 欢迎区域
   welcomeSection: {
     flex: 1,

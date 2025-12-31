@@ -13,9 +13,22 @@ import asyncio
 import os
 
 # 配置日志
+# 配置日志
+logger = logging.getLogger(__name__)
+if not logger.handlers:
+    # 如果没有 handler，则添加一个
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging.INFO)
+    formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+    console_handler.setFormatter(formatter)
+    logger.addHandler(console_handler)
+    logger.setLevel(logging.INFO)
+
+# 为了兼容现有代码中直接使用 logging.info 的情况
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    force=True  # 强制重新配置 (Python 3.8+)
 )
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -95,7 +108,7 @@ def main(exchange_code, stock_code, fiscal_year, company_name = '', period_type 
         yield {
             "status": "complete",
             "message": "财务报表分析完成",
-            "data": {
+            "message": {
                 "company_name": company_name,
                 "exchange_code": exchange_code,
                 "stock_code": stock_code,
