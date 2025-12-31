@@ -1,0 +1,32 @@
+# 财务报表分析智能体 - 依赖库
+
+# 核心框架
+langchain>=0.1.0
+langgraph>=0.0.20
+langchain-openai>=0.0.5
+langchain-community>=0.0.10
+langchain-huggingface>=0.0.1
+langchain-text-splitters>=0.0.1
+
+# PDF处理（中文优化版）
+pymupdf>=1.23.0  # PyMuPDF，对中文PDF支持更好
+faiss-cpu>=1.7.4
+
+# 中文 Embeddings 模型
+sentence-transformers>=2.2.0  # 包含 HuggingFace Embeddings
+torch>=2.0.0  # sentence-transformers 依赖
+
+# Web 框架
+fastapi>=0.100.0
+uvicorn>=0.23.0
+
+# 浏览器自动化
+playwright>=1.40.0
+
+# HTTP 请求
+requests>=2.31.0
+
+# 其他工具
+python-dotenv>=1.0.0
+supabase>=1.0.0
+

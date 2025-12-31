@@ -1,0 +1,55 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Poetry
+poetry.lock  # 可选：团队协作时应该提交这个文件
+
+# 虚拟环境
+.venv/
+venv/
+ENV/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# 项目特定
+pdf/
+*.pdf
+db/*.db
+cookie.json
+
+# 环境变量
+.env
+.env.local
+
+# 日志
+*.log
+
+# 操作系统
+.DS_Store
+Thumbs.db
+

@@ -1,0 +1,68 @@
+[tool.poetry]
+name = "financial-report-analyzer"
+version = "0.1.0"
+description = "基于 LangChain 的财务报表智能分析系统"
+authors = ["Your Name <your.email@example.com>"]
+readme = "README.md"
+packages = [{include = "financial"}]
+
+[tool.poetry.dependencies]
+python = "^3.9"
+# 核心框架
+langchain = ">=0.1.0"
+langgraph = ">=0.0.20"
+langchain-openai = ">=0.0.5"
+langchain-community = ">=0.0.10"
+
+# PDF处理（中文优化版）
+pymupdf = ">=1.23.0"
+faiss-cpu = ">=1.7.4"
+
+# 中文 Embeddings 模型
+sentence-transformers = ">=2.2.0"
+torch = ">=2.0.0"
+
+# Web 框架
+fastapi = ">=0.100.0"
+uvicorn = ">=0.23.0"
+
+# 浏览器自动化
+playwright = ">=1.40.0"
+
+# HTTP 请求
+requests = ">=2.31.0"
+
+# 其他工具
+python-dotenv = ">=1.0.0"
+supabase = ">=1.0.0"
+
+[tool.poetry.group.dev.dependencies]
+# 开发工具
+pytest = "^7.4.0"
+pytest-asyncio = "^0.21.0"
+black = "^23.0.0"
+flake8 = "^6.0.0"
+mypy = "^1.5.0"
+
+[tool.poetry.scripts]
+# 命令行入口
+financial-server = "main:app"
+
+[[tool.poetry.source]]
+name = "tsinghua"
+url = "https://pypi.tuna.tsinghua.edu.cn/simple/"
+priority = "primary"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.black]
+line-length = 120
+target-version = ['py39']
+
+[tool.mypy]
+python_version = "3.9"
+warn_return_any = true
+warn_unused_configs = true
+
