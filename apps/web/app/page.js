@@ -7,6 +7,7 @@ const API_BASE = 'http://127.0.0.1:8000';
 
 export default function Home() {
   const [messages, setMessages] = useState([]);
+  const [loading, setLoading] = useState(false);
 
   // 是否有消息，决定布局模式
   const hasMessages = messages.length > 0;
@@ -14,6 +15,9 @@ export default function Home() {
   // 处理发送消息
   const handleSubmit = useCallback(async ({ message, query }, slotValues) => {
     // if (!message.trim()) return;
+
+    // 开始加载
+    setLoading(true);
 
     // 添加用户消息
     const userMessage = {
@@ -52,6 +56,7 @@ export default function Home() {
 
         const chunk = decoder.decode(value, { stream: true });
         buffer += chunk;
+        console.log(chunk, 'chunk')
 
         // SSE 消息由 \n\n 分隔
         const messages = buffer.split('\n\n');
@@ -64,7 +69,6 @@ export default function Home() {
             try {
               const jsonStr = line.slice(6);
               const data = JSON.parse(jsonStr);
-
               // 根据不同状态处理
               if (data.status === 'progress') {
                 // 将进度作为引用块显示
@@ -94,6 +98,9 @@ export default function Home() {
           ? { ...msg, content: '请求失败，请重试' }
           : msg
       ));
+    } finally {
+      // 结束加载
+      setLoading(false);
     }
   }, []);
 
@@ -122,7 +129,7 @@ export default function Home() {
         ...(hasMessages ? styles.inputSectionBottom : styles.inputSectionCenter)
       }}>
         <div style={styles.inputWrapper}>
-          <Sender onSubmit={handleSubmit} />
+          <Sender onSubmit={handleSubmit} loading={loading} />
         </div>
       </div>
     </div>
@@ -173,14 +180,13 @@ const styles = {
   messageSection: {
     flex: 1,
     overflow: 'auto',
-    padding: '24px 0',
-    paddingBottom: '120px', // 给底部输入框留出空间
+    padding: '24px 0',// 给底部输入框留出空间
     animation: 'slideDown 0.3s ease-out',
   },
 
   // 输入区域 - 始终使用 absolute 定位，只改变垂直位置
   inputSection: {
-    position: 'absolute',
+    // position: 'absolute',
     left: 0,
     right: 0,
     display: 'flex',

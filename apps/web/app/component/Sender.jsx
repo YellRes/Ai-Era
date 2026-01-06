@@ -2,9 +2,9 @@
 
 import { useState, useRef, useMemo } from 'react';
 import { Sender, XProvider, Suggestion } from '@ant-design/x';
-import { 
-  SearchOutlined, 
-  FileTextOutlined, 
+import {
+  SearchOutlined,
+  FileTextOutlined,
   BarChartOutlined,
   BulbOutlined,
   CloseOutlined
@@ -33,7 +33,6 @@ const CompanySelect = ({ value, onChange, disabled, readOnly }) => {
     <Select
       value={value}
       onChange={onChange}
-      disabled={disabled || readOnly}
       placeholder="选择公司"
       showSearch
       onSearch={(val) => {
@@ -42,7 +41,7 @@ const CompanySelect = ({ value, onChange, disabled, readOnly }) => {
       filterOption={false}
       variant="borderless"
       size="small"
-      style={{ 
+      style={{
         minWidth: 100,
         maxWidth: 180,
         height: 24,
@@ -62,11 +61,11 @@ const CompanySelect = ({ value, onChange, disabled, readOnly }) => {
 const generateSlotConfig = (skillKey) => {
   if (skillKey === 'report') {
     return [
-      { 
-        type: 'text', 
-        value: '请选择' 
+      {
+        type: 'text',
+        value: '请选择'
       },
-      { 
+      {
         type: 'custom',
         key: 'company-select',
         props: {
@@ -82,9 +81,9 @@ const generateSlotConfig = (skillKey) => {
           />
         ),
       },
-      { 
-        type: 'text', 
-        value: '公司，我来分析公司财报' 
+      {
+        type: 'text',
+        value: '公司，我来分析公司财报'
       },
     ];
   }
@@ -143,7 +142,7 @@ const SkillSelector = ({ selectedSkill, onSelect, onClear }) => {
 // 已选择技能展示组件
 const SelectedSkillTag = ({ skill, onClose }) => {
   if (!skill) return null;
-  
+
   return (
     <Tag
       closable
@@ -175,7 +174,7 @@ const skillStyles = {
   },
 };
 
-export default function SenderComponent({ onSubmit: onSubmitProp }) {
+export default function SenderComponent({ onSubmit: onSubmitProp, loading = false }) {
   // 词槽模式下 value 无效，用 key 控制重置
   const [senderKey, setSenderKey] = useState(0);
   const [selectedButton, setSelectedButton] = useState(null);
@@ -208,33 +207,33 @@ export default function SenderComponent({ onSubmit: onSubmitProp }) {
     console.log('提交文本:', message);
     console.log('词槽配置:', slotConfig);
     console.log('选中技能:', selectedSkill);
-    
+
     // 调用外部回调
     if (onSubmitProp) {
-    const res = senderRef.current?.getValue();
-    
-    let message = ''
-    if (res.slotConfig) {
+      const res = senderRef.current?.getValue();
+
+      let message = ''
+      if (res.slotConfig) {
         let selectedCompany = res.slotConfig.find(item => item.key === 'company-select')?.value || ''
         let query = originalCompanyInfo.find(item => item.code === selectedCompany)
         message = {
-            ...query,
-            exchange_code: EXCHANGE_CODE_MAP[query.orgId.slice(0, 4)],
-            stock_code: query.code,
-            fiscal_year: new Date().getFullYear(),
-            company_name: query.zwjc,
-            // period_type: query.periodType
+          ...query,
+          exchange_code: EXCHANGE_CODE_MAP[query.orgId.slice(0, 4)] || EXCHANGE_CODE_MAP[query.code.slice(0, 3)] || EXCHANGE_CODE_MAP[query.code.slice(0, 2)],
+          stock_code: query.code,
+          fiscal_year: new Date().getFullYear(),
+          company_name: query.zwjc,
+          // period_type: query.periodType
         }
-    } else {
+      } else {
         message = value.value || ''
+      }
+
+      console.log(message)
+
+      onSubmitProp({ query: message, message: res.value }, slotConfig);
     }
 
-    console.log(message)
-
-      onSubmitProp({query: message, message: res.value}, slotConfig);
-    }
-    
-    // 重置输入框
+    // 重置输入框`
     setSenderKey(prev => prev + 1);
   };
 
@@ -262,18 +261,18 @@ export default function SenderComponent({ onSubmit: onSubmitProp }) {
                 if (senderRef.current?.insert) {
 
                   senderRef.current.insert([
-                    { 
+                    {
                       type: 'tag',
                       key: `tag-${item}-${Date.now()}`,  // ✅ 添加唯一 key
-                      props: { 
+                      props: {
                         label: filterCompanyCode2NameMap[item] || item,
-                        value: item 
-                      }  
+                        value: item
+                      }
                     }
                   ]);
                 }
               }}
-              >
+            >
               {
                 ({ onTrigger }) => (
                   <Sender
@@ -282,6 +281,8 @@ export default function SenderComponent({ onSubmit: onSubmitProp }) {
                     slotConfig={currentSlotConfig}
                     placeholder="输入 / 唤起快捷指令"
                     onSubmit={handleSubmit}
+                    loading={loading}
+                    disabled={loading}
                     onChange={(text, event, slotConfig) => {
                     }}
                     style={styles.sender}
@@ -295,7 +296,7 @@ export default function SenderComponent({ onSubmit: onSubmitProp }) {
                     header={
                       <div style={styles.skillHeader}>
                         <div style={styles.skillHeaderTitle}>选择技能</div>
-                        <SkillSelector 
+                        <SkillSelector
                           selectedSkill={selectedSkill}
                           onSelect={handleSkillSelect}
                           onClear={handleSkillClear}
@@ -305,8 +306,8 @@ export default function SenderComponent({ onSubmit: onSubmitProp }) {
                     // 自定义 prefix 展示已选技能
                     prefix={
                       selectedSkill && (
-                        <SelectedSkillTag 
-                          skill={selectedSkill} 
+                        <SelectedSkillTag
+                          skill={selectedSkill}
                           onClose={handleSkillClear}
                         />
                       )

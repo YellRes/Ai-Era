@@ -40,6 +40,7 @@ const MessageList = ({ messages = [] }) => {
           <Bubble.List
             items={bubbleItems}
             style={styles.bubbleList}
+            autoScroll
           />
         </div>
       </div>
@@ -53,11 +54,14 @@ const styles = {
     height: '100%',
     display: 'flex',
     justifyContent: 'center',
+    overflow: 'auto',
   },
   listWrapper: {
     width: '100%',
     maxWidth: 800,
     padding: '0 24px',
+    height: 'fit-content', // 高度自适应内容
+    minHeight: '100%', // 至少占满父容器
   },
   bubbleList: {
     background: 'transparent',

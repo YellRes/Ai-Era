@@ -99,7 +99,7 @@ def main(exchange_code, stock_code, fiscal_year, company_name = '', period_type 
             yield {
                 "status": "analyzing",
                 "step": "analysis_stream",
-                "data": analysis_chunk
+                "data": analysis_chunk.get("content")
             }
             print(analysis_chunk, "analysis_chunk")
         
