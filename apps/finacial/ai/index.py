@@ -19,7 +19,7 @@ from langgraph.checkpoint.memory import MemorySaver
 from langgraph.prebuilt import create_react_agent
 
 # 导入工具
-from tools import (
+from .tools import (
     load_financial_pdf,
     extract_financial_data,
     calculate_financial_ratio,
@@ -29,7 +29,7 @@ from tools import (
 )
 
 # 导入提示词
-from prompts import FINANCIAL_ANALYST_PROMPT
+from .prompts import FINANCIAL_ANALYST_PROMPT
 
 # 获取当前脚本所在目录的绝对路径
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -138,9 +138,7 @@ def main_with_pdf(pdf_path: str) -> Generator:
     
     # 测试查询
     test_queries = [
-        f"请加载这个PDF文件：{pdf_path}",
-        "从PDF中提取所有关键财务数据",
-        "基于提取的数据，分析这家公司的整体财务状况",
+        f"请加载这个PDF文件：{pdf_path}, 从PDF中提取所有关键财务数据, 基于提取的数据，分析这家公司的整体财务状况"
     ]
     
     thread_id = "pdf_analysis_session"
@@ -156,30 +154,47 @@ def main_with_pdf(pdf_path: str) -> Generator:
         else:
             messages = [HumanMessage(content=query)]
 
-        # 返回流
+        # 返回流 (messages 模式返回 (message, metadata) 元组)
         stream = agent.stream(
             {"messages": messages},
             config=config,
-            stream_mode="values"
+            stream_mode="messages"
         )
         
         # 使用生成器逐个产生事件
-        for chunk in stream:
-            latest_message = chunk["messages"][-1]
+        for message, metadata in stream:
+            # messages 模式下，message 是 AIMessageChunk 或其他消息类型
+            # metadata 包含 langgraph_node 等信息
             
-            if latest_message.content:
+            # 处理 AI 消息内容（流式文本）
+            if hasattr(message, 'content') and message.content:
                 yield {
                     "type": "message",
                     "step": i,
-                    "content": latest_message.content
+                    "content": message.content,
+                    "node": metadata.get("langgraph_node", "unknown")
                 }
-            elif hasattr(latest_message, 'tool_calls') and latest_message.tool_calls:
-                tools = [tc['name'] for tc in latest_message.tool_calls]
+            
+            # 处理工具调用
+            if hasattr(message, 'tool_calls') and message.tool_calls:
+                tools = [tc['name'] for tc in message.tool_calls]
                 yield {
                     "type": "tool_call",
                     "step": i,
-                    "tools": tools
+                    "tools": tools,
+                    "node": metadata.get("langgraph_node", "unknown")
                 }
+            
+            # 处理工具调用块（流式工具调用）
+            if hasattr(message, 'tool_call_chunks') and message.tool_call_chunks:
+                for chunk in message.tool_call_chunks:
+                    yield {
+                        "type": "tool_call_chunk",
+                        "step": i,
+                        "name": chunk.get("name", ""),
+                        "args": chunk.get("args", ""),
+                        "node": metadata.get("langgraph_node", "unknown")
+                    }
     
     # 分析完成
     yield {
