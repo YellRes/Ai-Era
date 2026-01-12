@@ -5,6 +5,7 @@ PDF 数据加载工具集
 
 import os
 import re
+import json
 from langchain_core.tools import tool
 from langchain_core.documents import Document
 from langchain_community.document_loaders import PyMuPDFLoader
@@ -37,72 +38,128 @@ def format_amount(value: float) -> str:
     else:
         return f"{sign}{abs_value:.2f} 元"
 
+# 财务指标正则模式定义（供内部函数和工具共用）
+FINANCIAL_PATTERNS = {
+    # 利润表指标 (每个汉字之间都允许空白符)
+    "营业收入": r"营[\s\n]*业[\s\n]*(?:总[\s\n]*)?收[\s\n]*入[（(]?元?[)）]?[\s\n|｜]*(?:—[\s\n]*)*([\d,，]+\.?\d*)",
+    "利润总额": r"利[\s\n]*润[\s\n]*总[\s\n]*额[（(]?元?[)）]?[\s\n|｜]*(?:—[\s\n]*)*([\d,，]+\.?\d*)",
+    "归属于上市公司股东的净利润": r"归[\s\n]*属[\s\n]*于[\s\n]*上[\s\n]*市[\s\n]*公[\s\n]*司[\s\n]*股[\s\n]*东[\s\n]*的?[\s\n]*净[\s\n]*利[\s\n]*润[\s\n]*[（(]?[\s\n]*元?[\s\n]*[)）]?[\s\n|｜]*(?:—[\s\n]*)*(-?[\d,，]+\.?\d*)",
+    "扣非净利润": r"扣[\s\n]*除[\s\n]*非?[\s\n]*经[\s\n]*常[\s\n]*性[\s\n]*损[\s\n]*益[\s\n]*的?[\s\n]*净[\s\n]*利[\s\n]*润[（(]?元?[)）]?[\s\n|｜]*(?:—[\s\n]*)*(-?[\d,，]+\.?\d*)",
+    
+    # 每股指标
+    "基本每股收益": r"基[\s\n]*本[\s\n]*每[\s\n]*股[\s\n]*收[\s\n]*益[（(]?元/股[)）]?[\s\n|｜]*(?:—[\s\n]*)*(-?[\d.]+)",
+    "稀释每股收益": r"稀[\s\n]*释[\s\n]*每[\s\n]*股[\s\n]*收[\s\n]*益[（(]?元/股[)）]?[\s\n|｜]*(?:—[\s\n]*)*(-?[\d.]+)",
+    
+    # 资产负债表指标
+    "总资产": r"总[\s\n]*资[\s\n]*产[（(]?元?[)）]?[\s\n|｜]*(?:—[\s\n]*)*([\d,，]+\.?\d*)",
+    "归属于上市公司股东的所有者权益": r"归[\s\n]*属[\s\n]*于[\s\n]*上[\s\n]*市[\s\n]*公[\s\n]*司[\s\n]*股[\s\n]*东[\s\n]*的?[\s\n]*所[\s\n]*有[\s\n]*者[\s\n]*权[\s\n]*益[（(]?元?[)）]?[\s\n|｜]*(?:—[\s\n]*)*([\d,，]+\.?\d*)",
+    
+    # 流动性相关指标（新增）
+    "流动资产合计": r"流[\s\n]*动[\s\n]*资[\s\n]*产[\s\n]*(?:合[\s\n]*计|小[\s\n]*计)[（(]?元?[)）]?[\s\n|｜]*(?:—[\s\n]*)*([\d,，]+\.?\d*)",
+    "流动负债合计": r"流[\s\n]*动[\s\n]*负[\s\n]*债[\s\n]*(?:合[\s\n]*计|小[\s\n]*计)[（(]?元?[)）]?[\s\n|｜]*(?:—[\s\n]*)*([\d,，]+\.?\d*)",
+    "货币资金": r"货[\s\n]*币[\s\n]*资[\s\n]*金[（(]?元?[)）]?[\s\n|｜]*(?:—[\s\n]*)*([\d,，]+\.?\d*)",
+    "存货": r"存[\s\n]*货[（(]?元?[)）]?[\s\n|｜]*(?:—[\s\n]*)*([\d,，]+\.?\d*)",
+    "负债合计": r"负[\s\n]*债[\s\n]*(?:合[\s\n]*计|总[\s\n]*计)[（(]?元?[)）]?[\s\n|｜]*(?:—[\s\n]*)*([\d,，]+\.?\d*)",
+    
+    # 现金流指标
+    "经营活动产生的现金流量净额": r"经[\s\n]*营[\s\n]*活[\s\n]*动[\s\n]*产[\s\n]*生[\s\n]*的[\s\n]*现[\s\n]*金[\s\n]*流[\s\n]*量[\s\n]*净[\s\n]*额[（(]?元?[)）]?[\s\n|｜]*(?:—[\s\n]*)*(-?[\d,，]+\.?\d*)",
+    
+    # 收益率指标
+    "加权平均净资产收益率": r"加[\s\n]*权[\s\n]*平[\s\n]*均[\s\n]*净[\s\n]*资[\s\n]*产[\s\n]*收[\s\n]*益[\s\n]*率[（(]?%?[)）]?[\s\n|｜]*(?:—[\s\n]*)*(-?[\d.]+)%?",
+}
+
+# 金额类型指标（需要格式化显示）
+AMOUNT_METRICS = {
+    "营业收入", "利润总额", "归属于上市公司股东的净利润", 
+    "扣非净利润", "总资产", "归属于上市公司股东的所有者权益",
+    "经营活动产生的现金流量净额", "流动资产合计", "流动负债合计",
+    "货币资金", "存货", "负债合计"
+}
+
+
+def _extract_metrics_dict() -> dict:
+    """
+    内部函数：从 PDF 中提取财务指标并返回字典格式。
+    供其他分析工具调用以自动获取数据。
+    
+    Returns:
+        包含财务指标的字典，key 为指标名称，value 为数值
+    """
+    global pdf_content
+    
+    if pdf_content is None:
+        return {}
+    
+    metrics = {}
+    
+    for name, pattern in FINANCIAL_PATTERNS.items():
+        match = re.search(pattern, pdf_content)
+        if match:
+            value_str = match.group(1).replace(",", "").replace("，", "")
+            try:
+                metrics[name] = float(value_str)
+            except ValueError:
+                pass  # 无法转换为数字则跳过
+    
+    return metrics
+
+
 @tool
 def extract_financial_metrics(query: str = "all") -> str:
     """
-    从已加载的财务报表 PDF 中提取关键财务指标（营业收入、净利润、资产状况等）。
+    从已加载的财务报表 PDF 中提取关键财务指标（营业收入、净利润、资产状况、流动性指标等）。
     
     Args:
-        query: 提取模式，默认为 "all"。
+        query: 提取模式，默认为 "all"。可选 "json" 返回纯 JSON 格式。
     
     Returns:
-        包含财务指标的格式化报告。
+        包含财务指标的报告。如果 query="json"，返回 JSON 字符串供程序解析。
     """
     global pdf_content
     
     if pdf_content is None:
         return "❌ 请先使用 load_financial_pdf 工具加载 PDF 文件"
     
-    # 定义要提取的财务指标及其正则模式
-    patterns = {
-        # 利润表指标 (每个汉字之间都允许空白符)
-        "营业收入": r"营[\s\n]*业[\s\n]*(?:总[\s\n]*)?收[\s\n]*入[（(]?元?[)）]?[\s\n|｜]*(?:—[\s\n]*)*([\d,，]+\.?\d*)",
-        "利润总额": r"利[\s\n]*润[\s\n]*总[\s\n]*额[（(]?元?[)）]?[\s\n|｜]*(?:—[\s\n]*)*([\d,，]+\.?\d*)",
-        "归属于上市公司股东的净利润": r"归[\s\n]*属[\s\n]*于[\s\n]*上[\s\n]*市[\s\n]*公[\s\n]*司[\s\n]*股[\s\n]*东[\s\n]*的?[\s\n]*净[\s\n]*利[\s\n]*润[\s\n]*[（(]?[\s\n]*元?[\s\n]*[)）]?[\s\n|｜]*(?:—[\s\n]*)*(-?[\d,，]+\.?\d*)",
-        "扣非净利润": r"扣[\s\n]*除[\s\n]*非?[\s\n]*经[\s\n]*常[\s\n]*性[\s\n]*损[\s\n]*益[\s\n]*的?[\s\n]*净[\s\n]*利[\s\n]*润[（(]?元?[)）]?[\s\n|｜]*(?:—[\s\n]*)*(-?[\d,，]+\.?\d*)",
-        
-        # 每股指标
-        "基本每股收益": r"基[\s\n]*本[\s\n]*每[\s\n]*股[\s\n]*收[\s\n]*益[（(]?元/股[)）]?[\s\n|｜]*(?:—[\s\n]*)*(-?[\d.]+)",
-        "稀释每股收益": r"稀[\s\n]*释[\s\n]*每[\s\n]*股[\s\n]*收[\s\n]*益[（(]?元/股[)）]?[\s\n|｜]*(?:—[\s\n]*)*(-?[\d.]+)",
-        
-        # 资产负债表指标
-        "总资产": r"总[\s\n]*资[\s\n]*产[（(]?元?[)）]?[\s\n|｜]*(?:—[\s\n]*)*([\d,，]+\.?\d*)",
-        "归属于上市公司股东的所有者权益": r"归[\s\n]*属[\s\n]*于[\s\n]*上[\s\n]*市[\s\n]*公[\s\n]*司[\s\n]*股[\s\n]*东[\s\n]*的?[\s\n]*所[\s\n]*有[\s\n]*者[\s\n]*权[\s\n]*益[（(]?元?[)）]?[\s\n|｜]*(?:—[\s\n]*)*([\d,，]+\.?\d*)",
-        
-        # 现金流指标
-        "经营活动产生的现金流量净额": r"经[\s\n]*营[\s\n]*活[\s\n]*动[\s\n]*产[\s\n]*生[\s\n]*的[\s\n]*现[\s\n]*金[\s\n]*流[\s\n]*量[\s\n]*净[\s\n]*额[（(]?元?[)）]?[\s\n|｜]*(?:—[\s\n]*)*(-?[\d,，]+\.?\d*)",
-        
-        # 收益率指标
-        "加权平均净资产收益率": r"加[\s\n]*权[\s\n]*平[\s\n]*均[\s\n]*净[\s\n]*资[\s\n]*产[\s\n]*收[\s\n]*益[\s\n]*率[（(]?%?[)）]?[\s\n|｜]*(?:—[\s\n]*)*(-?[\d.]+)%?",
-    }
+    metrics = _extract_metrics_dict()
     
-    # 定义哪些指标是金额类型(需要格式化)
-    amount_metrics = {
-        "营业收入", "利润总额", "归属于上市公司股东的净利润", 
-        "扣非净利润", "总资产", "归属于上市公司股东的所有者权益",
-        "经营活动产生的现金流量净额"
-    }
-    
-    result = "📊 提取的财务指标：\n\n"
-    found_any = False
-    
-    for name, pattern in patterns.items():
-        match = re.search(pattern, pdf_content)
-        if match:
-            found_any = True
-            value_str = match.group(1).replace(",", "").replace("，", "")
-            try:
-                value = float(value_str)
-                if name in amount_metrics:
-                    result += f"- {name}: {format_amount(value)}\n"
-                else:
-                    result += f"- {name}: {value}\n"
-            except:
-                result += f"- {name}: {value_str}\n"
-                
-    if not found_any:
+    if not metrics:
         return "❓ 未能在 PDF 中提取到关键财务指标，可能需要手动搜索。"
-        
+    
+    # 如果请求 JSON 格式，直接返回
+    if query.lower() == "json":
+        return json.dumps(metrics, ensure_ascii=False, indent=2)
+    
+    # 构建人类可读的报告
+    result = "📊 提取的财务指标：\n\n"
+    
+    # 按类别分组显示
+    categories = {
+        "利润表指标": ["营业收入", "利润总额", "归属于上市公司股东的净利润", "扣非净利润"],
+        "每股指标": ["基本每股收益", "稀释每股收益"],
+        "资产负债表指标": ["总资产", "归属于上市公司股东的所有者权益", "负债合计", 
+                      "流动资产合计", "流动负债合计", "货币资金", "存货"],
+        "现金流指标": ["经营活动产生的现金流量净额"],
+        "收益率指标": ["加权平均净资产收益率"],
+    }
+    
+    for category, metric_names in categories.items():
+        category_metrics = [(name, metrics[name]) for name in metric_names if name in metrics]
+        if category_metrics:
+            result += f"**{category}**\n"
+            for name, value in category_metrics:
+                if name in AMOUNT_METRICS:
+                    result += f"  - {name}: {format_amount(value)}\n"
+                elif name == "加权平均净资产收益率":
+                    result += f"  - {name}: {value}%\n"
+                else:
+                    result += f"  - {name}: {value}\n"
+            result += "\n"
+    
+    # 附加 JSON 数据供 LLM 使用
+    result += "\n---\n📋 原始数据 (JSON):\n```json\n"
+    result += json.dumps(metrics, ensure_ascii=False, indent=2)
+    result += "\n```"
+    
     return result
 
 
@@ -233,7 +290,7 @@ def extract_number_from_text(text: str) -> list:
                     value = float(clean_num)
                     if abs(value) > 0:  # 排除0
                         results.append((value, match))
-                except:
+                except ValueError:
                     pass
     
     # 去重
@@ -265,7 +322,6 @@ def load_financial_pdf(pdf_path: str) -> str:
         print("📂 正在加载PDF文件...")
         loader = PyMuPDFLoader(pdf_path)
         documents = loader.load()
-        print(documents[0].page_content)
         print(f"✓ 已加载 {len(documents)} 页")
         
         # 保存原始内容
@@ -312,9 +368,6 @@ def load_financial_pdf(pdf_path: str) -> str:
 
 
 
-
-
-
 def get_vectorstore():
     """获取当前的向量存储实例"""
     global pdf_vectorstore
@@ -336,7 +389,21 @@ __all__ = [
     'extract_number_from_text',
     'get_vectorstore',
     'get_pdf_content',
+    'get_extracted_metrics',
     'pdf_vectorstore',
     'pdf_content',
+    'FINANCIAL_PATTERNS',
+    'AMOUNT_METRICS',
 ]
+
+
+def get_extracted_metrics() -> dict:
+    """
+    获取从 PDF 中提取的财务指标字典。
+    供外部模块调用以自动获取数据。
+    
+    Returns:
+        包含财务指标的字典
+    """
+    return _extract_metrics_dict()
 

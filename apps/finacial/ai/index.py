@@ -42,7 +42,7 @@ PDF_DIR = os.path.join(SCRIPT_DIR, '..', 'pdf')
 if sys.platform.startswith('win'):
     try:
         sys.stdout.reconfigure(encoding='utf-8')
-    except:
+    except (AttributeError, OSError):
         pass
 
 # 加载环境变量

@@ -16,8 +16,11 @@ from .pdf_loader import (
     extract_number_from_text,
     get_vectorstore,
     get_pdf_content,
+    get_extracted_metrics,
     pdf_vectorstore,
     pdf_content,
+    FINANCIAL_PATTERNS,
+    AMOUNT_METRICS,
 )
 
 # 从分析模块导入
@@ -40,8 +43,11 @@ __all__ = [
     'extract_number_from_text',
     'get_vectorstore',
     'get_pdf_content',
+    'get_extracted_metrics',
     'pdf_vectorstore',
     'pdf_content',
+    'FINANCIAL_PATTERNS',
+    'AMOUNT_METRICS',
     # 分析工具
     'calculate_financial_ratio',
     'analyze_profitability',

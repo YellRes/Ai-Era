@@ -54,17 +54,19 @@ const styles = {
     height: '100%',
     display: 'flex',
     justifyContent: 'center',
-    overflow: 'auto',
   },
   listWrapper: {
     width: '100%',
     maxWidth: 800,
     padding: '0 24px',
-    height: 'fit-content', // 高度自适应内容
-    minHeight: '100%', // 至少占满父容器
+    height: '100%',
+    display: 'flex',
+    flexDirection: 'column',
   },
   bubbleList: {
     background: 'transparent',
+    flex: 1,
+    minHeight: 0, // 关键：允许 flex 子元素收缩
   },
 };
 
