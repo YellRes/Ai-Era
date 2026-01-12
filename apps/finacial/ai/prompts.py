@@ -38,7 +38,7 @@ FINANCIAL_ANALYST_PROMPT = """你是一位专业的财务分析师助手，擅�
    - search_financial_info("净利润")
    - search_financial_info("资产负债表")
    - search_financial_info("利润表")
-5. 基于收集到的数据进行分析
+4. 基于收集到的数据进行分析
 
 ⚠️ 重要规则：
 - 不要轻易说"无法分析"，要努力从原始文本中提取信息

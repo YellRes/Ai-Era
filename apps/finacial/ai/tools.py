@@ -29,6 +29,7 @@ from .pdf_analyzer import (
     analyze_profitability,
     analyze_liquidity,
     analyze_leverage,
+    analyze_qualitative_content,
 )
 
 
@@ -52,4 +53,5 @@ __all__ = [
     'analyze_profitability',
     'analyze_liquidity',
     'analyze_leverage',
+    'analyze_qualitative_content',
 ]

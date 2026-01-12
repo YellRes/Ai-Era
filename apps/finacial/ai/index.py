@@ -26,6 +26,7 @@ from .tools import (
     analyze_profitability,
     analyze_liquidity,
     analyze_leverage,
+    analyze_qualitative_content,
 )
 
 # 导入提示词
@@ -77,6 +78,7 @@ def create_financial_agent():
         analyze_profitability,
         analyze_liquidity,
         analyze_leverage,
+        analyze_qualitative_content,
     ]
     
     # 创建内存保存器
