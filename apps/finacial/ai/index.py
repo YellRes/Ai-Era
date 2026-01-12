@@ -21,7 +21,7 @@ from langgraph.prebuilt import create_react_agent
 # 导入工具
 from .tools import (
     load_financial_pdf,
-    extract_financial_data,
+    extract_financial_metrics,
     calculate_financial_ratio,
     analyze_profitability,
     analyze_liquidity,
@@ -72,8 +72,7 @@ def create_financial_agent():
     # 定义工具列表
     tools = [
         load_financial_pdf,
-        # search_financial_info,
-        extract_financial_data,
+        extract_financial_metrics,
         calculate_financial_ratio,
         analyze_profitability,
         analyze_liquidity,

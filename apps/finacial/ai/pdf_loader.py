@@ -17,28 +17,48 @@ pdf_vectorstore = None
 pdf_content = None
 
 
-def extract_financial_metrics(documents: list) -> dict:
+def format_amount(value: float) -> str:
     """
-    从 PDF 文档中提取关键财务指标
+    格式化金额,自动转换为万/亿单位
     
     Args:
-        documents: PyMuPDFLoader 加载的文档列表
+        value: 金额数值
     
     Returns:
-        包含财务指标的字典
+        格式化后的字符串
     """
-    # 合并所有页面内容
-    full_text = "\n".join([doc.page_content for doc in documents])
+    abs_value = abs(value)
+    sign = "-" if value < 0 else ""
     
-    metrics = {}
+    if abs_value >= 100_000_000:  # 大于等于1亿
+        return f"{sign}{abs_value / 100_000_000:.2f} 亿元"
+    elif abs_value >= 10_000:  # 大于等于1万
+        return f"{sign}{abs_value / 10_000:.2f} 万元"
+    else:
+        return f"{sign}{abs_value:.2f} 元"
+
+@tool
+def extract_financial_metrics(query: str = "all") -> str:
+    """
+    从已加载的财务报表 PDF 中提取关键财务指标（营业收入、净利润、资产状况等）。
+    
+    Args:
+        query: 提取模式，默认为 "all"。
+    
+    Returns:
+        包含财务指标的格式化报告。
+    """
+    global pdf_content
+    
+    if pdf_content is None:
+        return "❌ 请先使用 load_financial_pdf 工具加载 PDF 文件"
     
     # 定义要提取的财务指标及其正则模式
-    # 格式：指标名称 -> (正则模式, 数值组索引)
     patterns = {
-        # 利润表指标 (每个汉字之间都允许空白符,最大化兼容性)
+        # 利润表指标 (每个汉字之间都允许空白符)
         "营业收入": r"营[\s\n]*业[\s\n]*(?:总[\s\n]*)?收[\s\n]*入[（(]?元?[)）]?[\s\n|｜]*(?:—[\s\n]*)*([\d,，]+\.?\d*)",
         "利润总额": r"利[\s\n]*润[\s\n]*总[\s\n]*额[（(]?元?[)）]?[\s\n|｜]*(?:—[\s\n]*)*([\d,，]+\.?\d*)",
-        "归属于上市公司股东的净利润": r"归[\s\n]*属[\s\n]*于[\s\n]*上[\s\n]*市[\s\n]*公[\s\n]*司[\s\n]*股[\s\n]*东[\s\n]*的?[\s\n]*净[\s\n]*利[\s\n]*润[（(]?元?[)）]?[\s\n|｜]*(?:—[\s\n]*)*(-?[\d,，]+\.?\d*)",
+        "归属于上市公司股东的净利润": r"归[\s\n]*属[\s\n]*于[\s\n]*上[\s\n]*市[\s\n]*公[\s\n]*司[\s\n]*股[\s\n]*东[\s\n]*的?[\s\n]*净[\s\n]*利[\s\n]*润[\s\n]*[（(]?[\s\n]*元?[\s\n]*[)）]?[\s\n|｜]*(?:—[\s\n]*)*(-?[\d,，]+\.?\d*)",
         "扣非净利润": r"扣[\s\n]*除[\s\n]*非?[\s\n]*经[\s\n]*常[\s\n]*性[\s\n]*损[\s\n]*益[\s\n]*的?[\s\n]*净[\s\n]*利[\s\n]*润[（(]?元?[)）]?[\s\n|｜]*(?:—[\s\n]*)*(-?[\d,，]+\.?\d*)",
         
         # 每股指标
@@ -56,18 +76,34 @@ def extract_financial_metrics(documents: list) -> dict:
         "加权平均净资产收益率": r"加[\s\n]*权[\s\n]*平[\s\n]*均[\s\n]*净[\s\n]*资[\s\n]*产[\s\n]*收[\s\n]*益[\s\n]*率[（(]?%?[)）]?[\s\n|｜]*(?:—[\s\n]*)*(-?[\d.]+)%?",
     }
     
-    for metric_name, pattern in patterns.items():
-        match = re.search(pattern, full_text)
-        if match:
-            value_str = match.group(1)
-            # 清理数值：移除逗号，转换为浮点数
-            value_str = value_str.replace(",", "").replace("，", "")
-            try:
-                metrics[metric_name] = float(value_str)
-            except ValueError:
-                metrics[metric_name] = value_str
+    # 定义哪些指标是金额类型(需要格式化)
+    amount_metrics = {
+        "营业收入", "利润总额", "归属于上市公司股东的净利润", 
+        "扣非净利润", "总资产", "归属于上市公司股东的所有者权益",
+        "经营活动产生的现金流量净额"
+    }
     
-    return metrics
+    result = "📊 提取的财务指标：\n\n"
+    found_any = False
+    
+    for name, pattern in patterns.items():
+        match = re.search(pattern, pdf_content)
+        if match:
+            found_any = True
+            value_str = match.group(1).replace(",", "").replace("，", "")
+            try:
+                value = float(value_str)
+                if name in amount_metrics:
+                    result += f"- {name}: {format_amount(value)}\n"
+                else:
+                    result += f"- {name}: {value}\n"
+            except:
+                result += f"- {name}: {value_str}\n"
+                
+    if not found_any:
+        return "❓ 未能在 PDF 中提取到关键财务指标，可能需要手动搜索。"
+        
+    return result
 
 
 def extract_financial_table(page_content: str) -> list:
@@ -169,52 +205,6 @@ def split_by_chinese_headers(text: str, source: str = "") -> list:
             ))
     
     return documents
-
-
-def expand_query_with_synonyms(query: str, max_expansion: int = 3) -> list:
-    """
-    扩展查询词，增加财务领域同义词/相关词（精简版）
-    
-    Args:
-        query: 原始查询词
-        max_expansion: 最大扩展词数量（默认3个，避免搜索过多）
-    
-    Returns:
-        扩展后的查询词列表
-    """
-    # 财务领域同义词映射（精简版，只保留最常用的变体）
-    financial_synonyms = {
-        "利润": ["利润总额", "归属于上市公司股东的净利润", "归属于上市公司股东的扣除非经常性损益的净利润"],
-        "收入": ["营业收入", "营业总收入"],
-        "资产": ["总资产", "资产总计"],
-        "负债": ["总负债", "负债合计"],
-        "现金流": ["经营活动产生的现金流量净额"],
-        "毛利": ["毛利率"],
-        "净利率": ["销售净利率"],
-        "ROE": ["净资产收益率"],
-        "ROA": ["总资产收益率"],
-        "EPS": ["基本每股收益（元/股）", "稀释每股收益（元/股）"],
-        "营收": ["营业收入"],
-        "成本": ["营业成本"],
-        "费用": ["销售费用", "管理费用", "财务费用"],
-    }
-    
-    queries = [query]
-    
-    # 只匹配第一个命中的关键词，避免过度扩展
-    for key, synonyms in financial_synonyms.items():
-        if key in query:
-            # 只添加有限数量的同义词
-            queries.extend(synonyms[:max_expansion])
-            break
-        for syn in synonyms:
-            if syn in query:
-                queries.append(key)
-                break
-    
-    # 去重并返回，限制总数量
-    unique_queries = list(set(queries))
-    return unique_queries[:max_expansion + 1]  # 原始查询 + max_expansion 个扩展词
 
 
 def extract_number_from_text(text: str) -> list:
@@ -321,248 +311,8 @@ def load_financial_pdf(pdf_path: str) -> str:
         return f"❌ 加载PDF文件失败: {str(e)}\n\n💡 提示：请确保PDF文件路径正确，且文件未损坏。"
 
 
-@tool
-def search_financial_info(query: str) -> str:
-    """
-    从已加载的财务报表PDF中检索相关信息
-    
-    Args:
-        query: 要查询的财务信息（如"营业收入"、"净利润"、"资产负债表"、"归属于上市公司股东的扣除非经常性损益的净利润"等）
-    
-    Returns:
-        检索到的相关信息
-    """
-    global pdf_vectorstore
-    
-    if pdf_vectorstore is None:
-        return "❌ 请先使用 load_financial_pdf 工具加载PDF文件"
-    
-    try:
-        # 扩展查询词
-        expanded_queries = expand_query_with_synonyms(query)
-        
-        all_docs = []
-        seen_contents = set()
-        
-        # 对每个查询词进行检索
-        for q in expanded_queries:
-            # 使用带分数的相似性搜索，获取更多候选
-            docs_with_scores = pdf_vectorstore.similarity_search_with_score(q, k=5)
-            
-            for doc, score in docs_with_scores:
-                # 过滤低相关度结果（分数越低越相似，FAISS 使用 L2 距离）
-                # 同时去重
-                content_hash = hash(doc.page_content[:100])
-                if content_hash not in seen_contents:
-                    seen_contents.add(content_hash)
-                    all_docs.append((doc, score, q))
-        
-        if not all_docs:
-            return f"未找到关于'{query}'的相关信息"
-        
-        # 按相似度分数排序（分数越低越好）
-        all_docs.sort(key=lambda x: x[1])
-        
-        # 取前5个最相关的结果
-        top_docs = all_docs[:5]
-        
-        # 整合检索结果
-        result = f"📄 关于'{query}'的相关信息：\n\n"
-        for i, (doc, score, matched_query) in enumerate(top_docs, 1):
-            result += f"片段 {i} (匹配词: {matched_query}, 相关度: {1/(1+score):.2%}):\n{doc.page_content}\n\n{'='*50}\n\n"
-        
-        return result
-    
-    except Exception as e:
-        return f"❌ 检索失败: {str(e)}"
 
 
-@tool
-def extract_financial_data(data_type: str) -> str:
-    """
-    从PDF中提取特定的财务数据（通过 RAG 检索 + 智能匹配）
-    
-    Args:
-        data_type: 数据类型，可选值包括：
-            - 'revenue': 营业收入
-            - 'net_income': 净利润  
-            - 'total_assets': 总资产
-            - 'total_liabilities': 总负债
-            - 'equity': 股东权益
-            - 'current_assets': 流动资产
-            - 'current_liabilities': 流动负债
-            - 'cash': 现金及现金等价物
-            - 'operating_income': 归属于上市公司股东的扣除非经常性损益的净利润
-            - 'all': 提取所有关键财务指标
-    
-    Returns:
-        提取的财务数据及相关上下文
-    """
-    global pdf_vectorstore, pdf_content
-    
-    if pdf_vectorstore is None:
-        return "❌ 请先使用 load_financial_pdf 工具加载PDF文件"
-    
-    # 财务指标的检索关键词和别名
-    data_config = {
-        'revenue': {
-            'name': '营业收入',
-            'keywords': ['营业收入', '营业总收入', '主营业务收入', '一、营业收入'],
-            'patterns': [
-                r'(?:一、)?营业(?:总)?收入[^\d]*?([\d,，]+(?:\.\d+)?)',
-                r'营业收入\s+([\d,，]+(?:\.\d+)?)',
-            ]
-        },
-        'net_income': {
-            'name': '净利润',
-            'keywords': ['净利润', '归属于母公司所有者的净利润', '归属于上市公司股东的净利润'],
-            'patterns': [
-                r'(?:四、)?净利润[^\d]*?([\d,，-]+(?:\.\d+)?)',
-                r'归属于.*?净利润[^\d]*?([\d,，-]+(?:\.\d+)?)',
-            ]
-        },
-        'total_assets': {
-            'name': '总资产',
-            'keywords': ['资产总计', '资产总额', '总资产'],
-            'patterns': [
-                r'资产总计[^\d]*?([\d,，]+(?:\.\d+)?)',
-                r'总资产[^\d]*?([\d,，]+(?:\.\d+)?)',
-            ]
-        },
-        'total_liabilities': {
-            'name': '总负债',
-            'keywords': ['负债合计', '负债总计', '负债总额'],
-            'patterns': [
-                r'负债(?:合计|总计)[^\d]*?([\d,，]+(?:\.\d+)?)',
-            ]
-        },
-        'equity': {
-            'name': '股东权益',
-            'keywords': ['所有者权益合计', '股东权益合计', '归属于母公司所有者权益'],
-            'patterns': [
-                r'(?:所有者|股东)权益.*?合计[^\d]*?([\d,，]+(?:\.\d+)?)',
-                r'归属于母公司.*?权益[^\d]*?([\d,，]+(?:\.\d+)?)',
-            ]
-        },
-        'current_assets': {
-            'name': '流动资产',
-            'keywords': ['流动资产合计', '流动资产小计'],
-            'patterns': [
-                r'流动资产(?:合计|小计)[^\d]*?([\d,，]+(?:\.\d+)?)',
-            ]
-        },
-        'current_liabilities': {
-            'name': '流动负债',
-            'keywords': ['流动负债合计', '流动负债小计'],
-            'patterns': [
-                r'流动负债(?:合计|小计)[^\d]*?([\d,，]+(?:\.\d+)?)',
-            ]
-        },
-        'cash': {
-            'name': '货币资金',
-            'keywords': ['货币资金', '现金及现金等价物', '库存现金'],
-            'patterns': [
-                r'货币资金[^\d]*?([\d,，]+(?:\.\d+)?)',
-                r'现金及现金等价物[^\d]*?([\d,，]+(?:\.\d+)?)',
-            ]
-        },
-        'operating_income': {
-            'name': '归属于上市公司股东的扣除非经常性损益的净利润',
-            'keywords': ['扣除非经常性损益', '扣非净利润', '扣除非经常性损益的净利润'],
-            'patterns': [
-                r'扣除非经常性损益.*?净利润[^\d]*?([\d,，-]+(?:\.\d+)?)',
-                r'归属于上市公司股东的扣除非经常性损益的净利润[^\d]*?([\d,，-]+(?:\.\d+)?)',
-            ]
-        },
-    }
-    
-    def search_and_extract(config):
-        """使用 RAG 检索并提取数据"""
-        all_context = []
-        extracted_values = []
-        
-        # 对每个关键词进行检索
-        for keyword in config['keywords']:
-            try:
-                docs = pdf_vectorstore.similarity_search(keyword, k=3)
-                for doc in docs:
-                    content = doc.page_content
-                    all_context.append(content)
-                    
-                    # 尝试用正则提取数值
-                    for pattern in config['patterns']:
-                        matches = re.findall(pattern, content, re.IGNORECASE)
-                        for match in matches:
-                            clean_num = match.replace(',', '').replace('，', '').strip()
-                            try:
-                                value = float(clean_num)
-                                if abs(value) > 0:
-                                    extracted_values.append(value)
-                            except:
-                                pass
-            except:
-                pass
-        
-        # 返回找到的值（取最大值，通常财务报表的合计数较大）
-        unique_values = list(set(extracted_values))
-        unique_values.sort(reverse=True)
-        
-        return unique_values, all_context
-    
-    if data_type == 'all':
-        # 提取所有指标
-        result = "📊 提取的财务数据：\n\n"
-        extracted_data = {}
-        
-        for key, config in data_config.items():
-            values, contexts = search_and_extract(config)
-            if values:
-                # 取最可能的值（通常是最大的）
-                value = values[0]
-                extracted_data[key] = value
-                result += f"- {config['name']}: {value:,.2f}\n"
-            else:
-                result += f"- {config['name']}: 未找到\n"
-        
-        # 如果提取到数据较少，附加原始上下文供 LLM 分析
-        found_count = len([v for v in extracted_data.values() if v])
-        if found_count < 5:
-            result += "\n\n⚠️ 部分数据未能自动提取，以下是相关原始内容供分析：\n\n"
-            # 检索主要财务报表区域
-            for keyword in ['利润表', '资产负债表', '主要会计数据']:
-                try:
-                    docs = pdf_vectorstore.similarity_search(keyword, k=2)
-                    for doc in docs:
-                        result += f"---\n{doc.page_content[:500]}\n"
-                except:
-                    pass
-        
-        return result
-    
-    elif data_type in data_config:
-        config = data_config[data_type]
-        values, contexts = search_and_extract(config)
-        
-        if values:
-            result = f"📊 {config['name']}: {values[0]:,.2f}\n"
-            if len(values) > 1:
-                result += f"   (其他候选值: {', '.join([f'{v:,.2f}' for v in values[1:3]])})\n"
-            result += f"\n相关上下文:\n{contexts[0][:300] if contexts else '无'}..."
-            return result
-        else:
-            # 返回检索到的原始内容，让 LLM 自行分析
-            result = f"❓ 未能自动提取 {config['name']}，以下是相关内容：\n\n"
-            for keyword in config['keywords'][:2]:
-                try:
-                    docs = pdf_vectorstore.similarity_search(keyword, k=2)
-                    for doc in docs:
-                        result += f"---\n{doc.page_content[:400]}\n"
-                except:
-                    pass
-            return result
-    
-    else:
-        return f"不支持的数据类型: {data_type}"
 
 
 def get_vectorstore():
@@ -580,12 +330,9 @@ def get_pdf_content():
 # 导出所有工具和函数
 __all__ = [
     'load_financial_pdf',
-    'search_financial_info',
-    'extract_financial_data',
     'extract_financial_metrics',
     'extract_financial_table',
     'split_by_chinese_headers',
-    'expand_query_with_synonyms',
     'extract_number_from_text',
     'get_vectorstore',
     'get_pdf_content',

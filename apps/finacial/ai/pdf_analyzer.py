@@ -96,7 +96,8 @@ def analyze_profitability(revenue: float, net_income: float, total_assets: float
     else:
         analysis += "- 资产使用效率较低，需要优化资产配置\n"
     
-    return analysis + "归属于上市公司股东的扣除非经常性损益的净利润率: {operating_profit_margin:.2f}%"
+    analysis += f"- 归属于上市公司股东的扣除非经常性损益的净利润率: {operating_profit_margin:.2f}%"
+    return analysis
 
 
 @tool

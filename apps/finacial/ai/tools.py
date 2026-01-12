@@ -10,12 +10,9 @@
 # 从 PDF 加载模块导入
 from .pdf_loader import (
     load_financial_pdf,
-    search_financial_info,
-    extract_financial_data,
     extract_financial_metrics,
     extract_financial_table,
     split_by_chinese_headers,
-    expand_query_with_synonyms,
     extract_number_from_text,
     get_vectorstore,
     get_pdf_content,
@@ -37,12 +34,9 @@ from .pdf_analyzer import (
 __all__ = [
     # PDF 加载工具
     'load_financial_pdf',
-    'search_financial_info',
-    'extract_financial_data',
     'extract_financial_metrics',
     'extract_financial_table',
     'split_by_chinese_headers',
-    'expand_query_with_synonyms',
     'extract_number_from_text',
     'get_vectorstore',
     'get_pdf_content',
