@@ -176,11 +176,13 @@ const styles = {
     letterSpacing: '0.5px',
   },
 
-  // 消息区域
+  // 消息区域 - 不设置 overflow，让 Bubble.List 控制滚动
   messageSection: {
     flex: 1,
-    overflow: 'auto',
-    padding: '24px 0',// 给底部输入框留出空间
+    display: 'flex',
+    flexDirection: 'column',
+    padding: '24px 0',
+    minHeight: 0, // 关键：允许 flex 子元素收缩
     animation: 'slideDown 0.3s ease-out',
   },
 

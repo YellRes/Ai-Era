@@ -67,6 +67,7 @@ const styles = {
     background: 'transparent',
     flex: 1,
     minHeight: 0, // 关键：允许 flex 子元素收缩
+    overflow: 'auto', // 让 Bubble.List 成为滚动容器，autoScroll 才能生效
   },
 };
 
